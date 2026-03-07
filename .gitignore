@@ -1,0 +1,15 @@
+# Build output
+dist/
+*.zip
+
+# IDE/editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Lua temp
+luac.out
