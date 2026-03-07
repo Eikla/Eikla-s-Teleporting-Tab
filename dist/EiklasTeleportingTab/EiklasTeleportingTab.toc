@@ -1,0 +1,17 @@
+## Interface: 120001
+## Title: Eikla's Teleporting Tab
+## Notes: TeleportMenu-style teleports inside a World Map tab.
+## IconTexture: Interface\Icons\Spell_Arcane_PortalDalaran
+## Category: User Interface
+## Author: Eikla
+## Version: 1.0.0
+## SavedVariables: EiklasTeleportingTabDB
+## OptionalDeps: Masque
+
+embeds.xml
+Libs\LibWorldMapTabs-1.5\LibWorldMapTabs-1.5.lua
+Locales\Locales.xml
+Data\Data.xml
+Options.lua
+Buttons\Housing.lua
+EiklasTeleportingTab.lua
