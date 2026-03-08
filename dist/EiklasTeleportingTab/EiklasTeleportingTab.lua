@@ -833,7 +833,7 @@ local function BuildTeleportSections(allowMissingHearthstoneWarning)
 				missingHearthstoneWarned = true
 				print(APPEND .. L["No Hearthtone In Bags"])
 			end
-		elseif tpType == "housing" and not housingAdded and C_Housing and C_Housing.HasHousingExpansionAccess and C_Housing.HasHousingExpansionAccess() then
+		elseif tpType == "housing" and not housingAdded and C_Housing then
 			local playerFaction = UnitFactionGroup("player")
 			local hasSingleHouse = tpm.Housing:GetHouseCount() == 1
 			local canReturnHome = tpm.Housing:CanReturn()

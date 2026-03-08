@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2026-03-08
+
+- Fixed Housing visibility for clients where C_Housing.HasHousingExpansionAccess() reports false/nil despite owned houses existing.
+- Housing row is now gated by actual owned-house/return-home state instead of expansion-access API gate.
+
 ## [1.1.1] - 2026-03-08
 
 - Fixed a release regression where the Housing button could be hidden in packaged builds despite owned-house data being available.
@@ -19,5 +24,6 @@ All notable changes to this project will be documented in this file.
 - World Map tab integration for teleports.
 - Category rows with expand/collapse.
 - In-tab settings and hearthstone selector.
+
 
 

@@ -4,7 +4,7 @@
 ## IconTexture: Interface\Icons\Spell_Arcane_PortalDalaran
 ## Category: User Interface
 ## Author: Eikla
-## Version: 1.1.1
+## Version: 1.1.2
 ## SavedVariables: EiklasTeleportingTabDB
 ## OptionalDeps: Masque
 
@@ -15,5 +15,6 @@ Data\Data.xml
 Options.lua
 Buttons\Housing.lua
 EiklasTeleportingTab.lua
+
 
 
