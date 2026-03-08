@@ -833,10 +833,12 @@ local function BuildTeleportSections(allowMissingHearthstoneWarning)
 				missingHearthstoneWarned = true
 				print(APPEND .. L["No Hearthtone In Bags"])
 			end
-		elseif tpType == "housing" and not housingAdded and C_Housing and C_Housing.HasHousingExpansionAccess() then
+		elseif tpType == "housing" and not housingAdded and C_Housing and C_Housing.HasHousingExpansionAccess and C_Housing.HasHousingExpansionAccess() then
 			local playerFaction = UnitFactionGroup("player")
-			local hasSingleHouse = houseData and #houseData == 1
-			if tpm.Housing:HasAPlot() and (hasSingleHouse or playerFaction == teleport.faction) then
+			local hasSingleHouse = tpm.Housing:GetHouseCount() == 1
+			local canReturnHome = tpm.Housing:CanReturn()
+			local hasHousingPlot = tpm.Housing:HasAPlot()
+			if canReturnHome or (hasHousingPlot and (hasSingleHouse or playerFaction == teleport.faction)) then
 				housingAdded = true
 				table.insert(coreSection.entries, {
 					buttonType = "housing",
@@ -1602,14 +1604,7 @@ end
 -- Slash Commands
 SLASH_EIKLASTELEPORTINGTAB1 = "/ett"
 SLASH_EIKLASTELEPORTINGTAB2 = "/eiklatp"
-SlashCmdList["EIKLASTELEPORTINGTAB"] = function(msg)
-	local trimmed = msg and msg:lower():match("^%s*(.-)%s*$") or ""
-
-	if trimmed == "housing" then
-		tpm.Housing:DumpHouseData()
-		return
-	end
-
+SlashCmdList["EIKLASTELEPORTINGTAB"] = function()
 	tpm:OpenMapTab()
 end
 

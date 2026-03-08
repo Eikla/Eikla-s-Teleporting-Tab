@@ -22,10 +22,11 @@ Teleport buttons in a dedicated World Map tab, styled to fit Blizzard UI.
 From the addon repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\package.ps1 -Version v1.1.0
+powershell -ExecutionPolicy Bypass -File .\tools\package.ps1 -Version v1.1.1
 ```
 
 Output zip:
 
-`dist/EiklasTeleportingTab-v1.1.0.zip`
+`dist/EiklasTeleportingTab-v1.1.1.zip`
+
 

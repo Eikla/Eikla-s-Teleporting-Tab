@@ -19,6 +19,21 @@ local housingButtonsPool = {}
 local activeHousingButtons = {}
 houseData = houseData or {}
 
+local function BuildHouseList()
+	local list = {}
+	if type(houseData) ~= "table" then
+		return list
+	end
+
+	for _, info in pairs(houseData) do
+		if type(info) == "table" then
+			table.insert(list, info)
+		end
+	end
+
+	return list
+end
+
 --------------------------------------
 -- Functions
 --------------------------------------
@@ -66,19 +81,17 @@ end
 function Housing:CreateSecureHousingButton(tpInfo)
 	local button, houseInfo = nil, nil
 	local faction = tpInfo and tpInfo.faction and string.lower(tpInfo.faction)
+	local houseCount = self:GetHouseCount()
+	local houseList = BuildHouseList()
 
-	if not houseData or #houseData == 0 then
-		return
-	end
-
-	if #houseData == 1 or faction == "alliance" then
-		houseInfo = houseData[1]
+	if houseCount == 1 or faction == "alliance" then
+		houseInfo = houseList[1]
 	else -- horde if 2
-		houseInfo = houseData[2]
+		houseInfo = houseList[2]
 	end
 
 	if not self:CanReturn() and not houseInfo then
-		return
+		return nil
 	end
 
 	if next(housingButtonsPool) then
@@ -140,8 +153,12 @@ function Housing:CreateSecureHousingButton(tpInfo)
 	button.icon:SetTexCoord(offset, 1-offset, offset, 1-offset)
 
 	-- Attributes
+	button:SetAttribute("macrotext", nil)
 	if self:CanReturn() then
 		button:SetAttribute("type", "returnhome")
+		button:SetAttribute("house-neighborhood-guid", nil)
+		button:SetAttribute("house-guid", nil)
+		button:SetAttribute("house-plot-id", nil)
 	else
 		button:SetAttribute("type", "teleporthome")
 		button:SetAttribute("house-neighborhood-guid", houseInfo.neighborhoodGUID)
@@ -175,7 +192,19 @@ function Housing:GetActiveHousingButtons()
 end
 
 function Housing:HasAPlot()
-	return houseData and #houseData > 0
+	return self:GetHouseCount() > 0
+end
+
+function Housing:GetHouseCount()
+	local count = #BuildHouseList()
+	if count == 0 and C_Housing and C_Housing.GetPlayerOwnedHouses then
+		local ownedHouses = C_Housing.GetPlayerOwnedHouses()
+		if type(ownedHouses) == "table" then
+			houseData = ownedHouses
+			count = #BuildHouseList()
+		end
+	end
+	return count
 end
 
 --------------------------------------
@@ -189,16 +218,26 @@ f:SetScript("OnEvent", function(self, event, ...)
 end)
 
 function events:PLAYER_HOUSE_LIST_UPDATED(housingInfo)
-	f:UnregisterEvent("PLAYER_HOUSE_LIST_UPDATED")
-	houseData = housingInfo
+	if type(housingInfo) == "table" then
+		houseData = housingInfo
+	elseif C_Housing and C_Housing.GetPlayerOwnedHouses then
+		local ownedHouses = C_Housing.GetPlayerOwnedHouses()
+		if type(ownedHouses) == "table" then
+			houseData = ownedHouses
+		end
+	end
+	tpm:ReloadFrames()
 end
 
 function tpm:LoadHouses()
+	if not (C_Housing and C_Housing.GetPlayerOwnedHouses) then
+		return
+	end
+	local ownedHouses = C_Housing.GetPlayerOwnedHouses()
+	if type(ownedHouses) == "table" then
+		houseData = ownedHouses
+	end
 	f:RegisterEvent("PLAYER_HOUSE_LIST_UPDATED")
 	C_Housing.GetPlayerOwnedHouses()
-end
-
-function Housing:DumpHouseData()
-	DevTools_Dump(houseData)
 end
 
