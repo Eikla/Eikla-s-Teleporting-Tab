@@ -1,4 +1,4 @@
-# Eikla's Teleporting Tab
+﻿# Eikla's Teleporting Tab
 
 Teleport buttons in a dedicated World Map tab, styled to fit Blizzard UI.
 
@@ -22,9 +22,10 @@ Teleport buttons in a dedicated World Map tab, styled to fit Blizzard UI.
 From the addon repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\package.ps1 -Version v1.0.0
+powershell -ExecutionPolicy Bypass -File .\tools\package.ps1 -Version v1.1.0
 ```
 
 Output zip:
 
-`dist/EiklasTeleportingTab-v1.0.0.zip`
+`dist/EiklasTeleportingTab-v1.1.0.zip`
+

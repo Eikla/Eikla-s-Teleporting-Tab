@@ -309,6 +309,7 @@ local activeSecureButtons = {}
 local activeSectionFrames = {}
 local displayedSections = {}
 local pendingReload = false
+local toyCollectionInitialized = false
 
 local mapTabLib
 local mapTab
@@ -766,7 +767,7 @@ local function CreateSection(key, title)
 	}
 end
 
-local function BuildTeleportSections()
+local function BuildTeleportSections(allowMissingHearthstoneWarning)
 	local sections = {}
 	local coreSection = CreateSection("core", "Core Teleports")
 	local showHearthstone = db["Teleports:Hearthstone"] ~= "disabled"
@@ -777,9 +778,10 @@ local function BuildTeleportSections()
 		local tpType = teleport.type
 		local tpId = teleport.id
 		local known = false
+		local preferredHearthstone
 
 		if showHearthstone and teleport.hearthstone then
-			local preferredHearthstone = tostring(db["Teleports:Hearthstone"] or tpm.SettingsBase["Teleports:Hearthstone"] or "normal")
+			preferredHearthstone = tostring(db["Teleports:Hearthstone"] or tpm.SettingsBase["Teleports:Hearthstone"] or "normal")
 			if preferredHearthstone == "rng" then
 				tpId = tpm:GetRandomHearthstone()
 				if tpId then
@@ -825,14 +827,16 @@ local function BuildTeleportSections()
 				text = tpType == "spell" and shortNames[tpId] or nil,
 				hearthstone = teleport.hearthstone,
 			})
-		elseif showHearthstone and teleport.hearthstone and not known and not missingHearthstoneWarned then
-			missingHearthstoneWarned = true
-			print(APPEND .. L["No Hearthtone In Bags"])
-		elseif tpType == "housing" and not housingAdded and C_Housing and C_Housing.HasHousingExpansionAccess and C_Housing.HasHousingExpansionAccess() then
+		elseif allowMissingHearthstoneWarning and showHearthstone and teleport.hearthstone and not known and not missingHearthstoneWarned then
+			local toyBasedSelection = preferredHearthstone == "rng" or (preferredHearthstone and preferredHearthstone ~= "normal" and preferredHearthstone ~= "disabled")
+			if not toyBasedSelection or toyCollectionInitialized then
+				missingHearthstoneWarned = true
+				print(APPEND .. L["No Hearthtone In Bags"])
+			end
+		elseif tpType == "housing" and not housingAdded and C_Housing and C_Housing.HasHousingExpansionAccess() then
 			local playerFaction = UnitFactionGroup("player")
 			local hasSingleHouse = houseData and #houseData == 1
-			local canReturnHome = tpm.Housing:CanReturn()
-			if canReturnHome or (tpm.Housing:HasAPlot() and (hasSingleHouse or playerFaction == teleport.faction)) then
+			if tpm.Housing:HasAPlot() and (hasSingleHouse or playerFaction == teleport.faction) then
 				housingAdded = true
 				table.insert(coreSection.entries, {
 					buttonType = "housing",
@@ -1502,9 +1506,11 @@ function tpm:OpenMapTab()
 	if mapTabLib and mapTab and mapTab.displayMode then
 		mapTabLib:SetDisplayMode(mapTab.displayMode)
 	end
+
+	tpm:ReloadFrames(true)
 end
 
-function tpm:ReloadFrames()
+function tpm:ReloadFrames(showWarnings)
 	if InCombatLockdown() then
 		pendingReload = true
 		if statusText and mapContentFrame and mapContentFrame:IsShown() then
@@ -1525,6 +1531,9 @@ function tpm:ReloadFrames()
 	tpm:UpdateAvailableWormholes()
 	tpm:UpdateAvailableSeasonalTeleports()
 	tpm:UpdateAvailableItemTeleports()
+	if tpm.AvailableHearthstones and #tpm.AvailableHearthstones > 0 then
+		toyCollectionInitialized = true
+	end
 
 	if db["Button:Size"] then
 		globalWidth = db["Button:Size"]
@@ -1535,7 +1544,7 @@ function tpm:ReloadFrames()
 
 	RecycleDisplayedButtons()
 
-	local sections = BuildTeleportSections()
+	local sections = BuildTeleportSections(showWarnings == true)
 	for _, sectionData in ipairs(sections) do
 		local sectionFrame = AcquireSectionFrame()
 		local renderedSection = {
@@ -1593,7 +1602,14 @@ end
 -- Slash Commands
 SLASH_EIKLASTELEPORTINGTAB1 = "/ett"
 SLASH_EIKLASTELEPORTINGTAB2 = "/eiklatp"
-SlashCmdList["EIKLASTELEPORTINGTAB"] = function()
+SlashCmdList["EIKLASTELEPORTINGTAB"] = function(msg)
+	local trimmed = msg and msg:lower():match("^%s*(.-)%s*$") or ""
+
+	if trimmed == "housing" then
+		tpm.Housing:DumpHouseData()
+		return
+	end
+
 	tpm:OpenMapTab()
 end
 
@@ -1731,6 +1747,7 @@ function events:PLAYER_TALENT_UPDATE()
 end
 
 function events:TOYS_UPDATED()
+	toyCollectionInitialized = true
 	tpm:ReloadFrames()
 end
 

@@ -67,7 +67,7 @@ function Housing:CreateSecureHousingButton(tpInfo)
 	local button, houseInfo = nil, nil
 	local faction = tpInfo and tpInfo.faction and string.lower(tpInfo.faction)
 
-	if not self:CanReturn() and (not houseData or #houseData == 0) then
+	if not houseData or #houseData == 0 then
 		return
 	end
 
@@ -140,7 +140,6 @@ function Housing:CreateSecureHousingButton(tpInfo)
 	button.icon:SetTexCoord(offset, 1-offset, offset, 1-offset)
 
 	-- Attributes
-	button:SetAttribute("macrotext", nil)
 	if self:CanReturn() then
 		button:SetAttribute("type", "returnhome")
 	else
@@ -197,5 +196,9 @@ end
 function tpm:LoadHouses()
 	f:RegisterEvent("PLAYER_HOUSE_LIST_UPDATED")
 	C_Housing.GetPlayerOwnedHouses()
+end
+
+function Housing:DumpHouseData()
+	DevTools_Dump(houseData)
 end
 
