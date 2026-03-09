@@ -4,7 +4,7 @@
 ## IconTexture: Interface\Icons\Spell_Arcane_PortalDalaran
 ## Category: User Interface
 ## Author: Eikla
-## Version: 1.1.2
+## Version: 1.1.3
 ## SavedVariables: EiklasTeleportingTabDB
 ## OptionalDeps: Masque
 

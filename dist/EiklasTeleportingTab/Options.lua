@@ -23,7 +23,11 @@ end
 local function OnSettingChanged(_, setting, value)
 	local variable = setting:GetVariable()
 	EiklasTeleportingTabDB[variable] = value
-	tpm:ReloadFrames()
+	if tpm.RequestReload then
+		tpm:RequestReload(false, 0)
+	else
+		tpm:ReloadFrames()
+	end
 end
 
 local root = CreateFrame("Frame", ADDON_NAME, InterfaceOptionsFramePanelContainer)
@@ -122,7 +126,11 @@ function tpm:LoadOptions()
 
 		local function SetValue(value)
 			EiklasTeleportingTabDB[optionsKey] = value
-			tpm:ReloadFrames()
+			if tpm.RequestReload then
+				tpm:RequestReload(false, 0)
+			else
+				tpm:ReloadFrames()
+			end
 		end
 
 		local setting = Settings.RegisterProxySetting(buttonOptions, optionsKey, type(defaults[optionsKey]), text, defaults[optionsKey], GetValue, SetValue)
@@ -148,7 +156,11 @@ function tpm:LoadOptions()
 
 		local function SetValue(value)
 			EiklasTeleportingTabDB[optionsKey] = value
-			tpm:ReloadFrames()
+			if tpm.RequestReload then
+				tpm:RequestReload(false, 0)
+			else
+				tpm:ReloadFrames()
+			end
 		end
 
 		local setting = Settings.RegisterProxySetting(buttonOptions, optionsKey, type(defaults[optionsKey]), text, defaults[optionsKey], GetValue, SetValue)
@@ -174,7 +186,11 @@ function tpm:LoadOptions()
 
 		local function SetValue(value)
 			EiklasTeleportingTabDB[optionsKey] = value
-			tpm:ReloadFrames()
+			if tpm.RequestReload then
+				tpm:RequestReload(false, 0)
+			else
+				tpm:ReloadFrames()
+			end
 		end
 
 		local setting = Settings.RegisterProxySetting(buttonOptions, optionsKey, type(defaults[optionsKey]), text, defaults[optionsKey], GetValue, SetValue)
@@ -200,7 +216,11 @@ function tpm:LoadOptions()
 
 		local function SetValue(value)
 			EiklasTeleportingTabDB[optionsKey] = value
-			tpm:ReloadFrames()
+			if tpm.RequestReload then
+				tpm:RequestReload(false, 0)
+			else
+				tpm:ReloadFrames()
+			end
 		end
 
 		local setting = Settings.RegisterProxySetting(buttonOptions, optionsKey, type(defaults[optionsKey]), text, defaults[optionsKey], GetValue, SetValue)
@@ -273,7 +293,11 @@ function tpm:LoadOptions()
 			local function SetValue(value)
 				EiklasTeleportingTabDB[elementData.id] = value
 				tpm:UpdateAvailableItemTeleports()
-				tpm:ReloadFrames()
+				if tpm.RequestReload then
+					tpm:RequestReload(false, 0)
+				else
+					tpm:ReloadFrames()
+				end
 			end
 			if not frame.ItemIcon then
 				SetItemIcon(frame)

@@ -12,7 +12,7 @@ tpm.player = {
 }
 
 --- @param item_id integer
-function tpm:AddItemToPossession(item_id)
+function tpm:AddItemToPossession(item_id, suppressReload)
 	for key, item in pairs(tpm.player.items_to_be_obtained) do
 		if item.id == item_id then
 			push(tpm.player.items_in_possession, item)
@@ -26,16 +26,34 @@ function tpm:AddItemToPossession(item_id)
 			end
 
 			tpm.player.items_to_be_obtained[key] = nil
-			tpm.settings.scroll_box_views["items_to_be_obtained"]:SetDataProvider(CreateDataProvider(tpm.player.items_to_be_obtained))
-			tpm.settings.scroll_box_views["items_in_possession"]:SetDataProvider(CreateDataProvider(tpm.player.items_in_possession))
-			tpm:UpdateAvailableItemTeleports()
-			tpm:ReloadFrames()
+			local missingView = tpm.settings.scroll_box_views["items_to_be_obtained"]
+			if missingView and missingView.SetDataProvider then
+				missingView:SetDataProvider(CreateDataProvider(tpm.player.items_to_be_obtained))
+			end
+			local possessionView = tpm.settings.scroll_box_views["items_in_possession"]
+			if possessionView and possessionView.SetDataProvider then
+				possessionView:SetDataProvider(CreateDataProvider(tpm.player.items_in_possession))
+			end
+			if suppressReload then
+				if tpm.MarkAvailabilityDirty then
+					tpm:MarkAvailabilityDirty("itemTeleports")
+				end
+			else
+				tpm:UpdateAvailableItemTeleports()
+				if tpm.RequestReload then
+					tpm:RequestReload(false, 0)
+				else
+					tpm:ReloadFrames()
+				end
+			end
+			return true
 		end
 	end
+	return false
 end
 
 --- @param item_id integer
-function tpm:RemoveItemFromPossession(item_id)
+function tpm:RemoveItemFromPossession(item_id, suppressReload)
 	for key, item in pairs(tpm.player.items_in_possession) do
 		if item.id == item_id then
 			push(tpm.player.items_to_be_obtained, item)
@@ -49,10 +67,28 @@ function tpm:RemoveItemFromPossession(item_id)
 			end
 
 			tpm.player.items_in_possession[key] = nil
-			tpm.settings.scroll_box_views["items_to_be_obtained"]:SetDataProvider(CreateDataProvider(tpm.player.items_to_be_obtained))
-			tpm.settings.scroll_box_views["items_in_possession"]:SetDataProvider(CreateDataProvider(tpm.player.items_in_possession))
-			tpm:UpdateAvailableItemTeleports()
-			tpm:ReloadFrames()
+			local missingView = tpm.settings.scroll_box_views["items_to_be_obtained"]
+			if missingView and missingView.SetDataProvider then
+				missingView:SetDataProvider(CreateDataProvider(tpm.player.items_to_be_obtained))
+			end
+			local possessionView = tpm.settings.scroll_box_views["items_in_possession"]
+			if possessionView and possessionView.SetDataProvider then
+				possessionView:SetDataProvider(CreateDataProvider(tpm.player.items_in_possession))
+			end
+			if suppressReload then
+				if tpm.MarkAvailabilityDirty then
+					tpm:MarkAvailabilityDirty("itemTeleports")
+				end
+			else
+				tpm:UpdateAvailableItemTeleports()
+				if tpm.RequestReload then
+					tpm:RequestReload(false, 0)
+				else
+					tpm:ReloadFrames()
+				end
+			end
+			return true
 		end
 	end
+	return false
 end

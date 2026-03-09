@@ -310,6 +310,16 @@ local activeSectionFrames = {}
 local displayedSections = {}
 local pendingReload = false
 local toyCollectionInitialized = false
+local reloadScheduled = false
+local reloadScheduledShowWarnings = false
+local RELOAD_COALESCE_DELAY = 0.08
+local legacyOptionsScheduled = false
+local availabilityDirty = {
+	hearthstones = true,
+	wormholes = true,
+	seasonal = true,
+	itemTeleports = true,
+}
 
 local mapTabLib
 local mapTab
@@ -322,6 +332,102 @@ local teleportsScrollFrame
 local teleportsScrollChild
 local statusText
 local settingsWidgets = {}
+local worldMapShowHooked = false
+
+function tpm:MarkAvailabilityDirty(group)
+	if group == nil then
+		availabilityDirty.hearthstones = true
+		availabilityDirty.wormholes = true
+		availabilityDirty.seasonal = true
+		availabilityDirty.itemTeleports = true
+		return
+	end
+
+	if availabilityDirty[group] ~= nil then
+		availabilityDirty[group] = true
+	end
+end
+
+local function ScheduleLegacyOptionsLoad()
+	if legacyOptionsScheduled then
+		return
+	end
+	legacyOptionsScheduled = true
+
+	local function Load()
+		if tpm and tpm.LoadOptions then
+			tpm:LoadOptions()
+		end
+	end
+
+	-- Delay legacy settings frame construction so world entry stays smooth.
+	if C_Timer and C_Timer.After then
+		C_Timer.After(5, Load)
+	else
+		Load()
+	end
+end
+
+local function RequestVisibleReload(showWarnings, delaySeconds)
+	pendingReload = true
+	if mapContentFrame and mapContentFrame:IsShown() then
+		tpm:RequestReload(showWarnings, delaySeconds)
+	end
+end
+
+local function RefreshAvailabilityData(force)
+	if force or availabilityDirty.hearthstones then
+		tpm:UpdateAvailableHearthstones()
+		availabilityDirty.hearthstones = false
+	end
+	if force or availabilityDirty.wormholes then
+		tpm:UpdateAvailableWormholes()
+		availabilityDirty.wormholes = false
+	end
+	if force or availabilityDirty.seasonal then
+		tpm:UpdateAvailableSeasonalTeleports()
+		availabilityDirty.seasonal = false
+	end
+	if force or availabilityDirty.itemTeleports then
+		tpm:UpdateAvailableItemTeleports()
+		availabilityDirty.itemTeleports = false
+	end
+
+	if tpm.AvailableHearthstones and #tpm.AvailableHearthstones > 0 then
+		toyCollectionInitialized = true
+	end
+end
+
+function tpm:RequestReload(showWarnings, delaySeconds)
+	if showWarnings then
+		reloadScheduledShowWarnings = true
+	end
+	if reloadScheduled then
+		return
+	end
+
+	reloadScheduled = true
+	local delay = delaySeconds
+	if delay == nil then
+		delay = RELOAD_COALESCE_DELAY
+	end
+	if delay < 0 then
+		delay = 0
+	end
+
+	local function RunReload()
+		reloadScheduled = false
+		local useWarnings = reloadScheduledShowWarnings
+		reloadScheduledShowWarnings = false
+		tpm:ReloadFrames(useWarnings)
+	end
+
+	if C_Timer and C_Timer.After then
+		C_Timer.After(delay, RunReload)
+	else
+		RunReload()
+	end
+end
 
 local function createCooldownFrame(frame)
 	if frame.cooldownFrame then
@@ -833,8 +939,8 @@ local function BuildTeleportSections(allowMissingHearthstoneWarning)
 				missingHearthstoneWarned = true
 				print(APPEND .. L["No Hearthtone In Bags"])
 			end
-		elseif tpType == "housing" and not housingAdded and C_Housing then
-			local playerFaction = UnitFactionGroup("player")
+		elseif tpType == "housing" and not housingAdded then
+			local _, playerFaction = UnitFactionGroup("player")
 			local hasSingleHouse = tpm.Housing:GetHouseCount() == 1
 			local canReturnHome = tpm.Housing:CanReturn()
 			local hasHousingPlot = tpm.Housing:HasAPlot()
@@ -1063,6 +1169,25 @@ local function EnsureWorldMapLoaded()
 	return QuestMapFrame and WorldMapFrame
 end
 
+local function EnsureWorldMapShowHook()
+	if worldMapShowHooked then
+		return
+	end
+	if not (WorldMapFrame and WorldMapFrame.HookScript) then
+		return
+	end
+
+	worldMapShowHooked = true
+	WorldMapFrame:HookScript("OnShow", function()
+		if not mapRootFrame and tpm and tpm.InitializeMapTab then
+			tpm:InitializeMapTab()
+		end
+		if pendingReload and tpm and tpm.RequestReload then
+			tpm:RequestReload(false, 0)
+		end
+	end)
+end
+
 local function AddSettingUpdater(func)
 	table.insert(settingsWidgets, func)
 end
@@ -1075,7 +1200,7 @@ local function CreateCheckbox(parent, key, label, x, y)
 	end
 	checkbox:SetScript("OnClick", function(self)
 		db[key] = self:GetChecked() and true or false
-		tpm:ReloadFrames()
+		tpm:RequestReload(false, 0)
 	end)
 
 	AddSettingUpdater(function()
@@ -1127,7 +1252,7 @@ local function CreateStepper(parent, key, label, minValue, maxValue, step, x, y,
 			current = tpm.SettingsBase[key] or minValue
 		end
 		db[key] = Normalize(current + delta)
-		tpm:ReloadFrames()
+		tpm:RequestReload(false, 0)
 	end
 
 	minus:SetScript("OnClick", function()
@@ -1267,7 +1392,7 @@ local function CreateHearthstoneSelector(parent, x, y)
 				db[key] = optionValue
 				UpdateDropdownDisplay()
 				CloseDropDownMenus()
-				tpm:ReloadFrames()
+				tpm:RequestReload(false, 0)
 			end
 			UIDropDownMenu_AddButton(info, level)
 		end
@@ -1312,6 +1437,7 @@ function tpm:InitializeMapTab()
 	if not EnsureWorldMapLoaded() then
 		return false
 	end
+	EnsureWorldMapShowHook()
 
 	mapTabLib = LibStub("LibWorldMapTabs", true)
 	if not mapTabLib then
@@ -1486,7 +1612,7 @@ function tpm:InitializeMapTab()
 		C_Timer.After(0, function()
 			if mapContentFrame and mapContentFrame:IsShown() then
 				tpm:UpdateMapLayout()
-				tpm:ReloadFrames()
+				tpm:RequestReload(false, 0)
 			end
 		end)
 	end)
@@ -1500,6 +1626,7 @@ function tpm:OpenMapTab()
 	if not self:InitializeMapTab() then
 		return
 	end
+	EnsureWorldMapShowHook()
 
 	if WorldMapFrame and not WorldMapFrame:IsShown() then
 		ToggleWorldMap()
@@ -1509,7 +1636,13 @@ function tpm:OpenMapTab()
 		mapTabLib:SetDisplayMode(mapTab.displayMode)
 	end
 
-	tpm:ReloadFrames(true)
+	-- Re-request housing data when explicitly opening the tab.
+	if tpm.LoadHouses then
+		tpm:LoadHouses()
+	end
+
+	tpm:MarkAvailabilityDirty()
+	tpm:RequestReload(true, 0)
 end
 
 function tpm:ReloadFrames(showWarnings)
@@ -1522,20 +1655,18 @@ function tpm:ReloadFrames(showWarnings)
 		return
 	end
 
-	pendingReload = false
-
-	if not mapRootFrame and not self:InitializeMapTab() then
+	if not mapRootFrame then
+		pendingReload = true
 		return
 	end
 
-	-- Keep availability lists current; some collections/spell data can lag behind login.
-	tpm:UpdateAvailableHearthstones()
-	tpm:UpdateAvailableWormholes()
-	tpm:UpdateAvailableSeasonalTeleports()
-	tpm:UpdateAvailableItemTeleports()
-	if tpm.AvailableHearthstones and #tpm.AvailableHearthstones > 0 then
-		toyCollectionInitialized = true
+	if mapContentFrame and not mapContentFrame:IsShown() then
+		pendingReload = true
+		return
 	end
+
+	pendingReload = false
+	RefreshAvailabilityData(false)
 
 	if db["Button:Size"] then
 		globalWidth = db["Button:Size"]
@@ -1633,8 +1764,7 @@ local function checkItemsLoaded(self)
 	local function OnItemsLoaded()
 		if allLoaded then
 			tpm:Setup()
-			tpm:LoadOptions()
-			self:UnregisterEvent("ADDON_LOADED")
+			ScheduleLegacyOptionsLoad()
 		else
 			checkItemsLoaded(self)
 		end
@@ -1649,10 +1779,7 @@ function tpm:Setup()
 		globalHeight = db["Button:Size"]
 	end
 
-	tpm:UpdateAvailableHearthstones()
-	tpm:UpdateAvailableWormholes()
-	tpm:UpdateAvailableSeasonalTeleports()
-	tpm:UpdateAvailableItemTeleports()
+	tpm:MarkAvailabilityDirty()
 	tpm:LoadHouses()
 
 	-- Migration: old "none" behavior is now explicit "normal".
@@ -1671,8 +1798,13 @@ function tpm:Setup()
 		db["Teleports:Hearthstone"] = "normal"
 	end
 
-	tpm:InitializeMapTab()
-	tpm:ReloadFrames()
+	local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+	if type(isAddOnLoaded) == "function" and isAddOnLoaded("Blizzard_WorldMap") then
+		EnsureWorldMapShowHook()
+		tpm:InitializeMapTab()
+	end
+
+	pendingReload = true
 end
 
 -- Event Handlers
@@ -1680,6 +1812,7 @@ local events = {}
 local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
 f:RegisterEvent("PLAYER_LOGIN")
+f:RegisterEvent("PLAYER_ENTERING_WORLD")
 f:RegisterEvent("BAG_UPDATE_DELAYED")
 f:RegisterEvent("PLAYER_REGEN_ENABLED")
 f:RegisterEvent("SPELLS_CHANGED")
@@ -1697,6 +1830,11 @@ function events:ADDON_LOADED(...)
 		tpm.settings.current_season = 1
 
 		db.debug = false
+	elseif addOnName == "Blizzard_WorldMap" then
+		EnsureWorldMapShowHook()
+		if tpm:InitializeMapTab() and pendingReload then
+			tpm:RequestReload(false, 0)
+		end
 	end
 end
 
@@ -1705,7 +1843,26 @@ function events:PLAYER_LOGIN()
 	f:UnregisterEvent("PLAYER_LOGIN")
 end
 
+function events:PLAYER_ENTERING_WORLD()
+	EnsureWorldMapShowHook()
+
+	if tpm and tpm.LoadHouses then
+		tpm:LoadHouses()
+	end
+	tpm:MarkAvailabilityDirty("seasonal")
+	RequestVisibleReload(false, 0.05)
+end
+
 function events:BAG_UPDATE_DELAYED()
+	tpm:MarkAvailabilityDirty("itemTeleports")
+
+	local legacyFiltersFrame = _G.TeleportFiltersFramePanel
+	if not (legacyFiltersFrame and legacyFiltersFrame.IsShown and legacyFiltersFrame:IsShown()) then
+		RequestVisibleReload(false, 0.05)
+		return
+	end
+
+	local hasChanges = false
 	--- @type Item[]
 	local items_in_possession = CopyTable(tpm.player.items_in_possession)
 
@@ -1714,36 +1871,48 @@ function events:BAG_UPDATE_DELAYED()
 
 	for _, item in pairs(items_in_possession) do
 		if GetItemCount(item.id) == 0 then
-			tpm:RemoveItemFromPossession(item.id)
+			if tpm:RemoveItemFromPossession(item.id, true) then
+				hasChanges = true
+			end
 		end
 	end
 
 	for _, item in pairs(items_to_be_obtained) do
 		if GetItemCount(item.id) > 0 then
-			tpm:AddItemToPossession(item.id)
+			if tpm:AddItemToPossession(item.id, true) then
+				hasChanges = true
+			end
 		end
 	end
 
-	tpm:ReloadFrames()
+	if hasChanges then
+		tpm:MarkAvailabilityDirty("itemTeleports")
+	end
+	RequestVisibleReload(false, 0.05)
 end
 
 function events:PLAYER_REGEN_ENABLED()
 	if pendingReload then
-		tpm:ReloadFrames()
+		RequestVisibleReload(false, 0)
 	end
 end
 
 function events:SPELLS_CHANGED()
-	tpm:ReloadFrames()
+	tpm:MarkAvailabilityDirty("seasonal")
+	RequestVisibleReload(false, 0.05)
 end
 
 function events:PLAYER_TALENT_UPDATE()
-	tpm:ReloadFrames()
+	tpm:MarkAvailabilityDirty("seasonal")
+	RequestVisibleReload(false, 0.05)
 end
 
 function events:TOYS_UPDATED()
 	toyCollectionInitialized = true
-	tpm:ReloadFrames()
+	tpm:MarkAvailabilityDirty("hearthstones")
+	tpm:MarkAvailabilityDirty("wormholes")
+	tpm:MarkAvailabilityDirty("itemTeleports")
+	RequestVisibleReload(false, 0.05)
 end
 
 -- Debug Functions

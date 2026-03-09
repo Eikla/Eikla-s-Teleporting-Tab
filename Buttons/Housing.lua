@@ -17,7 +17,53 @@ local MasqueGroup = MSQ and MSQ:Group(L["ADDON_NAME"])
 
 local housingButtonsPool = {}
 local activeHousingButtons = {}
-houseData = houseData or {}
+local houseData = {}
+local housingApiRetries = 0
+local housingApiRetryScheduled = false
+local housingReloadScheduled = false
+local isRefreshingHouseData = false
+local HOUSING_API_MAX_RETRIES = 0 -- 0 = unlimited retries while API is unavailable
+local HOUSING_API_RETRY_DELAY_SECONDS = 1
+local HOUSING_UI_ADDONS = {
+	"Blizzard_HousingUI",
+	"Blizzard_PlayerHousingUI",
+	"Blizzard_Housing",
+	"Blizzard_PlayerHousing",
+	"Blizzard_HousingDashboard",
+	"Blizzard_PlayerHousingDashboard",
+}
+local ALLIANCE_HOUSING_MAP_ID = 2352 -- Founder's Point
+local HORDE_HOUSING_MAP_ID = 2351 -- Razorwind Shores
+
+local function DebugPrint(...)
+	if tpm and tpm.DebugPrint then
+		tpm:DebugPrint(...)
+	end
+end
+
+local function GetHouseFaction(houseInfo)
+	if not (houseInfo and houseInfo.neighborhoodGUID and C_Housing and C_Housing.GetUIMapIDForNeighborhood) then
+		return nil
+	end
+	local mapID = C_Housing.GetUIMapIDForNeighborhood(houseInfo.neighborhoodGUID)
+	if mapID == ALLIANCE_HOUSING_MAP_ID then
+		return "alliance"
+	end
+	if mapID == HORDE_HOUSING_MAP_ID then
+		return "horde"
+	end
+	return nil
+end
+
+local function GetFactionSortRank(faction)
+	if faction == "alliance" then
+		return 1
+	end
+	if faction == "horde" then
+		return 2
+	end
+	return 3
+end
 
 local function BuildHouseList()
 	local list = {}
@@ -31,7 +77,149 @@ local function BuildHouseList()
 		end
 	end
 
+	table.sort(list, function(a, b)
+		local factionA = GetHouseFaction(a) or ""
+		local factionB = GetHouseFaction(b) or ""
+		local rankA = GetFactionSortRank(factionA)
+		local rankB = GetFactionSortRank(factionB)
+		if rankA ~= rankB then
+			return rankA < rankB
+		end
+
+		local neighborhoodA = tostring(a.neighborhoodGUID or "")
+		local neighborhoodB = tostring(b.neighborhoodGUID or "")
+		if neighborhoodA ~= neighborhoodB then
+			return neighborhoodA < neighborhoodB
+		end
+
+		local houseGuidA = tostring(a.houseGUID or "")
+		local houseGuidB = tostring(b.houseGUID or "")
+		if houseGuidA ~= houseGuidB then
+			return houseGuidA < houseGuidB
+		end
+
+		return tonumber(a.plotID or 0) < tonumber(b.plotID or 0)
+	end)
+
 	return list
+end
+
+local function IsHousingApiReady()
+	return C_Housing and type(C_Housing.GetPlayerOwnedHouses) == "function"
+end
+
+local function TryLoadHousingUiAddons()
+	if IsHousingApiReady() then
+		return true
+	end
+
+	local loadAddOn = (C_AddOns and C_AddOns.LoadAddOn) or _G.LoadAddOn
+	local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+	if type(loadAddOn) ~= "function" then
+		return false
+	end
+
+	for _, addonName in ipairs(HOUSING_UI_ADDONS) do
+		local loaded = type(isAddOnLoaded) == "function" and isAddOnLoaded(addonName)
+		if not loaded then
+			local ok, result = pcall(loadAddOn, addonName)
+			DebugPrint("Housing: LoadAddOn", addonName, ok, result)
+		end
+		if IsHousingApiReady() then
+			return true
+		end
+	end
+
+	return IsHousingApiReady()
+end
+
+local function RefreshHouseDataFromApi()
+	if not IsHousingApiReady() or isRefreshingHouseData then
+		return false
+	end
+
+	isRefreshingHouseData = true
+	local ok, ownedHouses = pcall(C_Housing.GetPlayerOwnedHouses)
+	isRefreshingHouseData = false
+	if not ok then
+		DebugPrint("Housing: GetPlayerOwnedHouses failed", tostring(ownedHouses))
+		return false
+	end
+
+	if type(ownedHouses) == "table" then
+		houseData = ownedHouses
+		return true
+	end
+
+	return false
+end
+
+local function ScheduleHousingReload()
+	if housingReloadScheduled then
+		return
+	end
+	if not (tpm and (tpm.RequestReload or tpm.ReloadFrames)) then
+		return
+	end
+
+	if C_Timer and C_Timer.After then
+		housingReloadScheduled = true
+		C_Timer.After(0, function()
+			housingReloadScheduled = false
+			if tpm and tpm.RequestReload then
+				tpm:RequestReload(false, 0)
+			elseif tpm and tpm.ReloadFrames then
+				tpm:ReloadFrames()
+			end
+		end)
+	else
+		if tpm and tpm.RequestReload then
+			tpm:RequestReload(false, 0)
+		else
+			tpm:ReloadFrames()
+		end
+	end
+end
+
+local function ScheduleHousingApiRetry()
+	if housingApiRetryScheduled then
+		return
+	end
+	if HOUSING_API_MAX_RETRIES > 0 and housingApiRetries >= HOUSING_API_MAX_RETRIES then
+		return
+	end
+	if not (C_Timer and C_Timer.After) then
+		return
+	end
+
+	housingApiRetryScheduled = true
+	C_Timer.After(HOUSING_API_RETRY_DELAY_SECONDS, function()
+		housingApiRetryScheduled = false
+		housingApiRetries = housingApiRetries + 1
+		DebugPrint("Housing: retrying API init", housingApiRetries)
+		if tpm and tpm.LoadHouses then
+			tpm:LoadHouses()
+		end
+	end)
+end
+
+local function SelectHouseForFaction(houseList, faction)
+	if #houseList == 0 then
+		return nil
+	end
+
+	if #houseList == 1 or faction == nil then
+		return houseList[1]
+	end
+
+	for _, info in ipairs(houseList) do
+		if GetHouseFaction(info) == faction then
+			return info
+		end
+	end
+
+	DebugPrint("Housing: faction match not found, using first house entry", faction)
+	return houseList[1]
 end
 
 --------------------------------------
@@ -81,16 +269,19 @@ end
 function Housing:CreateSecureHousingButton(tpInfo)
 	local button, houseInfo = nil, nil
 	local faction = tpInfo and tpInfo.faction and string.lower(tpInfo.faction)
-	local houseCount = self:GetHouseCount()
 	local houseList = BuildHouseList()
+	houseInfo = SelectHouseForFaction(houseList, faction)
+	local canReturn = self:CanReturn()
 
-	if houseCount == 1 or faction == "alliance" then
-		houseInfo = houseList[1]
-	else -- horde if 2
-		houseInfo = houseList[2]
-	end
-
-	if not self:CanReturn() and not houseInfo then
+	if not canReturn and not houseInfo then
+		DebugPrint(
+			"Housing: no house payload available",
+			"faction=" .. tostring(faction),
+			"hasHouseInfo=" .. tostring(houseInfo ~= nil),
+			"neighborhoodGUID=" .. tostring(houseInfo and houseInfo.neighborhoodGUID),
+			"houseGUID=" .. tostring(houseInfo and houseInfo.houseGUID),
+			"plotID=" .. tostring(houseInfo and houseInfo.plotID)
+		)
 		return nil
 	end
 
@@ -154,7 +345,7 @@ function Housing:CreateSecureHousingButton(tpInfo)
 
 	-- Attributes
 	button:SetAttribute("macrotext", nil)
-	if self:CanReturn() then
+	if canReturn then
 		button:SetAttribute("type", "returnhome")
 		button:SetAttribute("house-neighborhood-guid", nil)
 		button:SetAttribute("house-guid", nil)
@@ -197,11 +388,10 @@ end
 
 function Housing:GetHouseCount()
 	local count = #BuildHouseList()
-	if count == 0 and C_Housing and C_Housing.GetPlayerOwnedHouses then
-		local ownedHouses = C_Housing.GetPlayerOwnedHouses()
-		if type(ownedHouses) == "table" then
-			houseData = ownedHouses
-			count = #BuildHouseList()
+	if count == 0 and not IsHousingApiReady() then
+		TryLoadHousingUiAddons()
+		if not IsHousingApiReady() then
+			ScheduleHousingApiRetry()
 		end
 	end
 	return count
@@ -218,26 +408,31 @@ f:SetScript("OnEvent", function(self, event, ...)
 end)
 
 function events:PLAYER_HOUSE_LIST_UPDATED(housingInfo)
+	housingApiRetries = 0
 	if type(housingInfo) == "table" then
 		houseData = housingInfo
-	elseif C_Housing and C_Housing.GetPlayerOwnedHouses then
-		local ownedHouses = C_Housing.GetPlayerOwnedHouses()
-		if type(ownedHouses) == "table" then
-			houseData = ownedHouses
-		end
+	else
+		-- Keep this guarded: GetPlayerOwnedHouses can synchronously re-fire this event.
+		RefreshHouseDataFromApi()
 	end
-	tpm:ReloadFrames()
+	ScheduleHousingReload()
 end
 
 function tpm:LoadHouses()
-	if not (C_Housing and C_Housing.GetPlayerOwnedHouses) then
+	f:RegisterEvent("PLAYER_HOUSE_LIST_UPDATED")
+
+	if not IsHousingApiReady() then
+		TryLoadHousingUiAddons()
+	end
+	if not IsHousingApiReady() then
+		DebugPrint("Housing: API not ready yet, scheduling retry")
+		ScheduleHousingApiRetry()
 		return
 	end
-	local ownedHouses = C_Housing.GetPlayerOwnedHouses()
-	if type(ownedHouses) == "table" then
-		houseData = ownedHouses
+
+	housingApiRetries = 0
+	if RefreshHouseDataFromApi() then
+		ScheduleHousingReload()
 	end
-	f:RegisterEvent("PLAYER_HOUSE_LIST_UPDATED")
-	C_Housing.GetPlayerOwnedHouses()
 end
 

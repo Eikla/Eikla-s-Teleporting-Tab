@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.3] - 2026-03-09
+
+- Fixed a startup crash caused by recursive housing refresh/reload loops (`STACK_OVERFLOW`).
+- Improved startup/runtime performance by coalescing reload requests and only rebuilding visible map-tab UI.
+- Reduced world-entry overhead by deferring legacy options-panel construction and avoiding unnecessary full data refreshes.
+- Restored reliable tab visibility by hooking World Map show initialization after lazy-load optimizations.
+
 ## [1.1.2] - 2026-03-08
 
 - Fixed Housing visibility for clients where C_Housing.HasHousingExpansionAccess() reports false/nil despite owned houses existing.
